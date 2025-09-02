@@ -5,6 +5,7 @@ import os
 import sys
 import numpy as np
 import socket
+import time
 
 def load_calibration(file_path):
     """Load calibration parameters from a YAML file."""
@@ -37,15 +38,17 @@ def open_gst_cam(device_number):
 def start_server(host="0.0.0.0", port=5000):
     """Start a TCP server and wait for client connection."""
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind((host, port))
+    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server_socket.bind((host, port))       # <-- QUI invece di connect()
     server_socket.listen(1)
     print(f"Server listening on {host}:{port}")
+    
     conn, addr = server_socket.accept()
     print(f"Connection with {addr}")
     return conn
 
 def main():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser() 
     parser.add_argument("-y", "--yaml_dir", required=True,
                         help="Directory containing left.yaml and right.yaml")
     parser.add_argument("-v", "--view", action="store_true",
@@ -56,6 +59,8 @@ def main():
                         help="TCP host (default: 0.0.0.0)")
     parser.add_argument("--port", type=int, default=5000,
                         help="TCP port (default: 5000)")
+    parser.add_argument("-q", "--quality", type=int, default=100,
+                        help="JPEG quality (default: 100)")
     args = parser.parse_args()
 
     # YAML file paths
@@ -69,7 +74,6 @@ def main():
     # Load parameters
     cam_matrix_left, dist_left, rect_left, proj_left = load_calibration(left_yaml)
     cam_matrix_right, dist_right, rect_right, proj_right = load_calibration(right_yaml)
-
     # Open the two cameras
     cap_left = open_gst_cam(0)
     cap_right = open_gst_cam(1)
@@ -93,15 +97,17 @@ def main():
         conn = start_server(args.host, args.port)
 
     while True:
+        # Capture frames
         retL, frameL = cap_left.read()
         retR, frameR = cap_right.read()
         if not retL or not retR:
             print("Error: Unable to read from video streams")
             break
-
+        time_rec = time.time()
         # Rectification
         rect_left = cv2.remap(frameL, map1_left, map2_left, cv2.INTER_LINEAR)
         rect_right = cv2.remap(frameR, map1_right, map2_right, cv2.INTER_LINEAR)
+        print(f"Time to rectify: {time.time() - time_rec:.4f} seconds")
 
         if args.view:
             cv2.imshow("Left Rectified", rect_left)
@@ -111,7 +117,7 @@ def main():
             # Concatenate horizontally
             concat = np.hstack((rect_left, rect_right))
             # Encode to JPEG
-            _, buffer = cv2.imencode('.jpg', concat)
+            _, buffer = cv2.imencode('.jpg', concat, [int(cv2.IMWRITE_JPEG_QUALITY), args.quality])
             data = np.array(buffer).tobytes()
             size = len(data)
             # Send size first (16 bytes, padded)
@@ -129,28 +135,6 @@ def main():
     if conn:
         conn.close()
 
-    # OLD 
-    while True:
-        retL, frameL = cap_left.read()
-        retR, frameR = cap_right.read()
-        if not retL or not retR:
-            print("Error: Unable to read from video streams")
-            break
-
-        # Rectification
-        rect_left = cv2.remap(frameL, map1_left, map2_left, cv2.INTER_LINEAR)
-        rect_right = cv2.remap(frameR, map1_right, map2_right, cv2.INTER_LINEAR)
-
-        if args.view:
-            cv2.imshow("Left Rectified", rect_left)
-            cv2.imshow("Right Rectified", rect_right)
-
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
-
-    cap_left.release()
-    cap_right.release()
-    cv2.destroyAllWindows()
 
 if __name__ == "__main__":
     main()
