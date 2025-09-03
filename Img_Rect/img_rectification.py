@@ -26,8 +26,8 @@ def load_calibration(file_path):
 def open_gst_cam(device_number):
     """Create a GStreamer pipeline to open the Blackmagic DeckLink camera."""
     gst_pipeline = (
-        f"decklinkvideosrc device-number={device_number} ! "
-        "videoconvert ! appsink"
+        f"decklinkvideosrc device-number={device_number} ! video/x-raw width=1920,height=1080 ! deinterlace fields=top ! "
+        "videoconvert ! appsink drop=true sync=false"
     )
     cap = cv2.VideoCapture(gst_pipeline, cv2.CAP_GSTREAMER)
     if not cap.isOpened():
@@ -84,6 +84,7 @@ def main():
         print("Error: Unable to read frame from camera 0")
         sys.exit(1)
     h, w = frame.shape[:2]
+    print(f"Camera resolution: {w}x{h}")
 
     # Prepare rectification maps
     map1_left, map2_left = cv2.initUndistortRectifyMap(
@@ -98,16 +99,23 @@ def main():
 
     while True:
         # Capture frames
+        cap_time = time.time()
         retL, frameL = cap_left.read()
         retR, frameR = cap_right.read()
         if not retL or not retR:
             print("Error: Unable to read from video streams")
             break
-        time_rec = time.time()
+        rec_time = time.time()
+        print(f"Capture time: {rec_time - cap_time:.4f} seconds")
         # Rectification
         rect_left = cv2.remap(frameL, map1_left, map2_left, cv2.INTER_LINEAR)
         rect_right = cv2.remap(frameR, map1_right, map2_right, cv2.INTER_LINEAR)
-        print(f"Time to rectify: {time.time() - time_rec:.4f} seconds")
+        # Resize to 1300x1024 for hand-eye calibration
+        rect_left = cv2.resize(rect_left, (1300, 1024), interpolation=cv2.INTER_LINEAR)
+        rect_right = cv2.resize(rect_right, (1300, 1024), interpolation=cv2.INTER_LINEAR)
+        h, w = rect_left.shape[:2]
+        encoding_time = time.time()
+        print(f"Rectifying time: {encoding_time - rec_time:.4f} seconds")
 
         if args.view:
             cv2.imshow("Left Rectified", rect_left)
@@ -118,12 +126,15 @@ def main():
             concat = np.hstack((rect_left, rect_right))
             # Encode to JPEG
             _, buffer = cv2.imencode('.jpg', concat, [int(cv2.IMWRITE_JPEG_QUALITY), args.quality])
+            send_time = time.time()
+            print(f"Encoding time: {send_time - encoding_time:.4f} seconds")
             data = np.array(buffer).tobytes()
             size = len(data)
             # Send size first (16 bytes, padded)
             conn.sendall(str(size).encode().ljust(16))
             # Then send the frame
             conn.sendall(data)
+            print(f"Sending time: {time.time() - send_time:.4f} seconds")
 
         if (args.view and cv2.waitKey(1) & 0xFF == ord('q')):
             break

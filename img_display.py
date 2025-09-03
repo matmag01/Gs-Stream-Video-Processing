@@ -30,6 +30,8 @@ def main():
     while True:
         # Capture frames
         retL, frameL = cap_left.read()
+        h, w = frameL.shape[:2]
+        print(f"Frame dimensions: {w}x{h}")
         retR = True #, frameR = cap_right.read()
         if not retL or not retR:
             print("Error: Unable to read from video streams")
