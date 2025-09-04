@@ -95,6 +95,7 @@ def main():
     # Load parameters
     cam_matrix_left, dist_left, rect_left, proj_left = load_calibration(left_yaml)
     cam_matrix_right, dist_right, rect_right, proj_right = load_calibration(right_yaml)
+    print("Camera matrix left:\n", cam_matrix_left)
 
     # Create two pipelines
     pipeline1, appsink1 = make_pipeline(0)
@@ -102,17 +103,8 @@ def main():
     pipeline2, appsink2 = make_pipeline(1)
     pipeline2.set_state(Gst.State.PLAYING)
 
-    # Get dimensions
-    sample = appsink1.emit("pull-sample")
-
-    frame = gst_to_opencv(sample)
-    if frame is None:
-        print("Error: Unable to read frame from camera 0")
-        sys.exit(1)
-    h, w = 1080, 1920
-    print(f"Camera resolution: {w}x{h}")
-
     # Prepare rectification maps
+    w, h = 1280, 720
     map1_left, map2_left = cv2.initUndistortRectifyMap(
         cam_matrix_left, dist_left, rect_left, proj_left, (w, h), cv2.CV_16SC2)
     map1_right, map2_right = cv2.initUndistortRectifyMap(
@@ -133,23 +125,26 @@ def main():
 
         frame1 = gst_to_opencv(sample1)
         frame2 = gst_to_opencv(sample2)
-        h, w = frame1.shape[:2]
-        print(f"Captured resolution: {w}x{h}")
+        # Resize to 1280x720
+        frame1 = cv2.resize(frame1, (1300, 1024), interpolation=cv2.INTER_LINEAR)
+        frame2 = cv2.resize(frame2, (1300, 1024), interpolation=cv2.INTER_LINEAR)
+
         if frame2 is None:
             print("Error: Unable to read frame from camera 1")
             sys.exit(1)
+
         cv2.imshow("Left ", frame1)
         cv2.imshow("Right ", frame2)
+
         rec_time = time.time()
         print(f"Capture time: {rec_time - cap_time:.4f} seconds")
         # Rectification
         rect_left = cv2.remap(frame1, map1_left, map2_left, cv2.INTER_LINEAR)
         rect_right = cv2.remap(frame2, map1_right, map2_right, cv2.INTER_LINEAR)
-        # Resize to 1300x1024 for hand-eye calibration
-        #rect_left = cv2.resize(rect_left, (1300, 1024), interpolation=cv2.INTER_LINEAR)
-        #rect_right = cv2.resize(rect_right, (1300, 1024), interpolation=cv2.INTER_LINEAR)
+
         h, w = rect_left.shape[:2]
         print(f"Rectified resolution: {w}x{h}")
+        
         encoding_time = time.time()
         print(f"Rectifying time: {encoding_time - rec_time:.4f} seconds")
 

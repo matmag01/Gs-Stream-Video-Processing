@@ -11,7 +11,7 @@ import time
 def open_gst_cam(device_number):
     """Create a GStreamer pipeline to open the Blackmagic DeckLink camera."""
     gst_pipeline = (
-        f"decklinkvideosrc device-number={device_number} ! video/x-raw width=1920,height=1080 ! deinterlace fields=top ! "
+        f"decklinkvideosrc device-number={device_number} ! video/x-raw width=1080,height=720 ! deinterlace fields=top ! "
         "videoconvert ! appsink drop=true sync=false"
     )
     cap = cv2.VideoCapture(gst_pipeline, cv2.CAP_GSTREAMER)
