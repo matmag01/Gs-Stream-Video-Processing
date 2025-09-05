@@ -18,7 +18,13 @@ def make_pipeline(device_number):
     """
     Create a GStreamer pipeline that captures video from a DeckLink device and sends it to an appsink.
     """
-    pipeline_str = f"decklinkvideosrc device-number={device_number} ! videoconvert ! video/x-raw,format=BGR ! appsink name=appsink"
+    pipeline_str = (
+        f"decklinkvideosrc device-number={device_number} ! "
+        "videoconvert ! "
+        "videocrop left=310 right=310 top=28 bottom=28 ! "
+        "video/x-raw,format=BGR ! "
+        "appsink name=appsink"
+    )
     pipeline = Gst.parse_launch(pipeline_str)
     appsink = pipeline.get_by_name("appsink")
     appsink.set_property("emit-signals", True)
@@ -104,7 +110,7 @@ def main():
     pipeline2.set_state(Gst.State.PLAYING)
 
     # Prepare rectification maps
-    w, h = 1280, 720
+    w, h = 1300, 1024
     map1_left, map2_left = cv2.initUndistortRectifyMap(
         cam_matrix_left, dist_left, rect_left, proj_left, (w, h), cv2.CV_16SC2)
     map1_right, map2_right = cv2.initUndistortRectifyMap(
@@ -126,8 +132,8 @@ def main():
         frame1 = gst_to_opencv(sample1)
         frame2 = gst_to_opencv(sample2)
         # Resize to 1280x720
-        frame1 = cv2.resize(frame1, (1300, 1024), interpolation=cv2.INTER_LINEAR)
-        frame2 = cv2.resize(frame2, (1300, 1024), interpolation=cv2.INTER_LINEAR)
+        #frame1 = cv2.resize(frame1, (1300, 1024), interpolation=cv2.INTER_LINEAR)
+        #frame2 = cv2.resize(frame2, (1300, 1024), interpolation=cv2.INTER_LINEAR)
 
         if frame2 is None:
             print("Error: Unable to read frame from camera 1")
